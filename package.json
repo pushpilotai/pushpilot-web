@@ -1,0 +1,32 @@
+{
+  "name": "@pushpilot/web",
+  "version": "1.0.0",
+  "description": "PushPilot web push SDK: subscribe a browser, show pushes from a service worker, and track deliveries and clicks.",
+  "type": "module",
+  "main": "./dist/pushpilot.mjs",
+  "module": "./dist/pushpilot.mjs",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/pushpilot.mjs"
+    },
+    "./pushpilot-sw.js": "./dist/pushpilot-sw.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node build.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
+    "test": "vitest run",
+    "example": "npm run build && node example/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "fake-indexeddb": "6.2.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
