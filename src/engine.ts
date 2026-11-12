@@ -56,7 +56,7 @@ async function post(state: State, path: string, json: string): Promise<Answer | 
 /** 1 s doubling to 5 min, each wait randomised to between half and all of it. */
 function backoff(failures: number): number {
   const base = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** Math.min(failures - 1, 20));
-  return base / 2 + Math.random() * (base / 2);
+  return Math.floor(base / 2 + Math.random() * (base / 2 + 1));
 }
 
 /** The browser's permission in the server's words; "default" (never asked) is "unknown", as on iOS. */
