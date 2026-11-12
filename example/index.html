@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PushPilot web example</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #1b1b1f; background: #fff; }
+    fieldset { border: 1px solid #ccd; border-radius: 8px; margin: 0 0 16px; padding: 12px 16px; }
+    label { display: block; margin: 6px 0; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; }
+    button { font: inherit; padding: 6px 12px; margin: 4px 4px 4px 0; }
+    #log { background: #f4f4f8; padding: 12px; border-radius: 8px; white-space: pre-wrap; font: 13px/1.4 ui-monospace, monospace; min-height: 6em; }
+  </style>
+</head>
+<body>
+  <h1>PushPilot web example</h1>
+  <p id="status"></p>
+
+  <fieldset>
+    <legend>1. Start</legend>
+    <label>SDK key <input id="sdkKey" autocomplete="off" placeholder="the web app's SDK key from the dashboard"></label>
+    <label>Base URL <input id="baseUrl" autocomplete="off" placeholder="empty for the hosted server, or your self-hosted URL"></label>
+    <button id="init">init</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Push</legend>
+    <button id="subscribe">subscribe</button>
+    <button id="unsubscribe">unsubscribe</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. Audience</legend>
+    <label>External user id <input id="userId" placeholder="user_42"></label>
+    <button id="setUser">setExternalUserId</button>
+    <button id="logout">logout</button>
+    <label>Topics, comma separated <input id="topics" placeholder="news, offers"></label>
+    <button id="setTopics">setTopics</button>
+    <label>Attributes as JSON <input id="attributes" placeholder='{"plan": "pro", "score": 3}'></label>
+    <button id="setAttributes">setAttributes</button>
+    <button id="forget">forget</button>
+  </fieldset>
+
+  <h2>Log</h2>
+  <div id="log"></div>
+
+  <script type="module">
+    import * as PushPilot from "/pushpilot.mjs";
+
+    const $ = (id) => document.getElementById(id);
+    const logLine = (text) => ($("log").textContent += `${new Date().toLocaleTimeString()}  ${text}\n`);
+    // The SDK logs at debug level; mirror it here so the page shows what it does.
+    const debug = console.debug.bind(console);
+    console.debug = (...args) => { debug(...args); logLine(args.join(" ")); };
+    const status = () => ($("status").textContent =
+      `Supported here: ${PushPilot.isSupported()} · permission: ${typeof Notification === "undefined" ? "n/a" : Notification.permission}`);
+    status();
+
+    // Remembered in this browser only, for convenience between reloads.
+    for (const id of ["sdkKey", "baseUrl"]) {
+      $(id).value = localStorage.getItem(`example.${id}`) ?? "";
+      $(id).addEventListener("change", () => localStorage.setItem(`example.${id}`, $(id).value));
+    }
+
+    $("init").onclick = () => {
+      const baseUrl = $("baseUrl").value.trim();
+      PushPilot.init($("sdkKey").value, baseUrl ? { baseUrl } : {});
+      logLine("init called");
+    };
+    $("subscribe").onclick = async () => { logLine(`subscribe → ${await PushPilot.subscribe()}`); status(); };
+    $("unsubscribe").onclick = async () => { await PushPilot.unsubscribe(); logLine("unsubscribed"); };
+    $("setUser").onclick = () => { PushPilot.setExternalUserId($("userId").value || null); logLine("setExternalUserId called"); };
+    $("logout").onclick = () => { PushPilot.logout(); logLine("logout called"); };
+    $("setTopics").onclick = () => {
+      PushPilot.setTopics($("topics").value.split(",").map((t) => t.trim()).filter(Boolean));
+      logLine("setTopics called");
+    };
+    $("setAttributes").onclick = () => {
+      try { PushPilot.setAttributes(JSON.parse($("attributes").value || "{}")); logLine("setAttributes called"); }
+      catch { logLine("attributes must be a JSON object"); }
+    };
+    $("forget").onclick = () => { PushPilot.forget(); logLine("forget called"); };
+  </script>
+</body>
+</html>
