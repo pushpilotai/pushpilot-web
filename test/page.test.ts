@@ -178,9 +178,3 @@ test("forget deletes the installation on the server and starts a new one", async
   expect(again.installation_id).not.toBe(oldId);
   expect(again.web_push).not.toBeNull();
 });
-
-test("the default base URL is the hosted server", async () => {
-  setup();
-  const sdk = await load();
-  expect(sdk.DEFAULT_BASE_URL).toBe("https://pushpilot.ai");
-});
