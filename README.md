@@ -1,19 +1,17 @@
-# @pushpilot/web
+# @pushpilotai/web
 
 PushPilot's web push SDK. It subscribes a visitor's browser with your web app's own VAPID key, registers it with PushPilot, shows PushPilot pushes from a service worker (title, body, image and buttons), opens links on a click, and reports `delivered` and `clicked`. It uses standard Web Push, no Firebase, and has no runtime dependencies.
 
-Status: version 1.0.0, not yet published to npm. No licence has been chosen yet, so none is included.
-
 ## Install
 
-**npm** (once published):
+**npm:**
 
 ```bash
-npm install @pushpilot/web
+npm install @pushpilotai/web
 ```
 
 ```js
-import * as PushPilot from "@pushpilot/web";
+import * as PushPilot from "@pushpilotai/web";
 ```
 
 **Script tag:** host `dist/pushpilot.js` on your site. It defines a global `PushPilot`.
@@ -22,7 +20,7 @@ import * as PushPilot from "@pushpilot/web";
 <script src="/pushpilot.js"></script>
 ```
 
-Either way, the service worker file is `dist/pushpilot-sw.js` (in the npm package as `@pushpilot/web/pushpilot-sw.js`).
+Either way, the service worker file is `dist/pushpilot-sw.js` (in the npm package as `@pushpilotai/web/pushpilot-sw.js`).
 
 ## Integration: two steps
 
@@ -181,3 +179,11 @@ These need a real browser and the backend half of the contract deployed (`web-co
 - On a site that has a OneSignal subscription with permission granted: load the page and confirm there is no prompt, the device registers, and a push arrives.
 - With the site's own worker importing ours: confirm both its pushes and ours are handled.
 - Revoke permission in the browser settings, come back to the page, and confirm the device shows `denied` with no address.
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE).

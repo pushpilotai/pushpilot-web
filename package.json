@@ -1,7 +1,17 @@
 {
-  "name": "@pushpilot/web",
+  "name": "@pushpilotai/web",
   "version": "1.0.0",
   "description": "PushPilot web push SDK: subscribe a browser, show pushes from a service worker, and track deliveries and clicks.",
+  "license": "Apache-2.0",
+  "author": "PushPilot <sdk@pushpilot.ai> (https://pushpilot.ai)",
+  "homepage": "https://pushpilot.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pushpilotai/pushpilot-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pushpilotai/pushpilot-web/issues"
+  },
   "type": "module",
   "main": "./dist/pushpilot.mjs",
   "module": "./dist/pushpilot.mjs",
@@ -21,12 +31,17 @@
     "build": "node build.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
     "test": "vitest run",
-    "example": "npm run build && node example/serve.mjs"
+    "example": "npm run build && node example/serve.mjs",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "esbuild": "0.25.10",
     "fake-indexeddb": "6.2.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   }
 }
