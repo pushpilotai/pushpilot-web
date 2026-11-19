@@ -42,6 +42,13 @@
     <button id="forget">forget</button>
   </fieldset>
 
+  <fieldset>
+    <legend>4. In-app messages</legend>
+    <label>Trigger name <input id="trigger" placeholder="checkout"></label>
+    <button id="showInApp">showInApp</button>
+    <button id="compose">compose (marked as "compose" for coach marks)</button>
+  </fieldset>
+
   <h2>Log</h2>
   <div id="log"></div>
 
@@ -81,6 +88,8 @@
       catch { logLine("attributes must be a JSON object"); }
     };
     $("forget").onclick = () => { PushPilot.forget(); logLine("forget called"); };
+    PushPilot.markView("#compose", "compose");
+    $("showInApp").onclick = async () => logLine(`showInApp → ${await PushPilot.showInApp($("trigger").value.trim())}`);
   </script>
 </body>
 </html>
