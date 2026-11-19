@@ -25,7 +25,7 @@ export async function request(state: State, method: "GET" | "POST", path: string
   const headers: Record<string, string> = { "X-SDK-Key": state.sdk_key ?? "" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   try {
-    const response = await fetch(`${state.base_url}/api/sdk/v1/${path}/${query}`, { method, headers, body });
+    const response = await fetch(`${state.base_url}/api/sdk/v1/${path}/${query}`, { method, headers, body, cache: "no-store" });
     // Readable cross-origin only if the server exposes it; otherwise 0 and the backoff alone applies.
     const retryAfter = Number(response.headers.get("Retry-After"));
     return { code: response.status, body: await response.text(), retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : 0 };
