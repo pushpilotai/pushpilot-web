@@ -1,6 +1,6 @@
 # @pushpilotai/web
 
-PushPilot's web push SDK. It subscribes a visitor's browser with your web app's own VAPID key, registers it with PushPilot, shows PushPilot pushes from a service worker (title, body, image and buttons), opens links on a click, and reports `delivered` and `clicked`. It uses standard Web Push, no Firebase, and has no runtime dependencies.
+PushPilot's web SDK. It subscribes a visitor's browser with your web app's own VAPID key, registers it with PushPilot, shows PushPilot pushes from a service worker (title, body, image and buttons), opens links on a click, and reports `delivered` and `clicked`. It also shows in-app messages (see [In-app messages](#in-app-messages)). It uses standard Web Push, no Firebase, and has no runtime dependencies.
 
 ## Install
 
@@ -69,6 +69,8 @@ Setters return at once and never throw. They run one at a time, in order. Calls 
 | `setTopics(string[])` | Replaces the topic list. Names outside `A-Z a-z 0-9 . _ ~ % -` or longer than 255 characters are dropped, the rest are de-duplicated and sorted, and at most 100 are kept. |
 | `setAttributes({ name: value })` | Merges attributes declared in the dashboard. A value is a string, a finite number or a boolean. `null` removes the attribute. |
 | `forget()` | Deletes this installation from PushPilot and clears local state. The next page load registers a new installation. |
+| `showInApp(name): Promise<boolean>` | Shows the first eligible cached in-app message whose trigger name is `name`, with no network request. Resolves `true` when one went on screen. `false` before `init`, when none is eligible, or while another message is showing. |
+| `markView(selector, name)` | Names the element a coach-mark message points at, by CSS selector, for example `markView("#compose", "compose")`. |
 | `isSupported(): boolean` | True when this browser can receive web push on this page. Use it to hide your button. On iOS it is false until the site is opened from the Home Screen. |
 | `DEFAULT_BASE_URL` | The hosted server's URL. |
 
@@ -85,7 +87,7 @@ Register and sync use the mobile body with `token_kind: "webpush"`, and a `web_p
   "web_push": {"endpoint": "https://fcm.googleapis.com/fcm/send/…", "p256dh": "…", "auth": "…"},
   "external_user_id": null,
   "notification_permission": "granted",
-  "sdk_version": "1.0.0",
+  "sdk_version": "1.1.0",
   "device_model": "Chrome 131",
   "locale": "en-GB",
   "timezone": "Europe/London",
@@ -119,6 +121,42 @@ Different on the web, and why:
 - A button with a `url` opens it. A button without one only closes the notification. Both report `clicked` with the button's id.
 - A push whose JSON does not have `source: "pushpilot"` is ignored, so it is left to your own handlers.
 
+## In-app messages
+
+An in-app message is a small HTML page made in the PushPilot dashboard and shown over your site while the visitor has it open. There is nothing to add beyond the push integration above. The SDK fetches, caches and shows messages by itself, and reports what happened.
+
+### Integration
+
+1. **Do the push integration.** In-app messages go to registered browsers, and the web SDK registers a browser once it is subscribed to push (see "A browser is registered only once it has a push address" above). A visitor who has not subscribed, or a browser where `isSupported()` is false, gets no in-app messages.
+2. **Messages triggered on app open need nothing more.** On each page load, and whenever the page becomes visible again, the SDK shows the first eligible cached message with the "app open" trigger, at most one each time.
+3. **Messages triggered by name.** Call `showInApp` where your site wants one, with the trigger name set in the dashboard:
+
+   ```js
+   const shown = await PushPilot.showInApp("checkout");
+   ```
+
+   It uses the cache only, so it answers at once. It resolves `false` when nothing is eligible.
+4. **Coach marks.** A coach-mark message points at an element of your page. Name that element once with a CSS selector, using the target name from the dashboard:
+
+   ```js
+   PushPilot.markView("#compose", "compose");
+   ```
+
+   The selector is looked up when the message would show. The first match that is visible and on screen is the target, and its box (`getBoundingClientRect`) is passed to the page as `pushpilot.target`. With no such element, the message is not shown and stays eligible for later.
+
+### How it behaves
+
+- **Fetch:** `GET /api/sdk/v1/in-app/` on page load and when the page becomes visible, at most once a minute, after the browser's first registration.
+- **Cache:** each message's page and every asset are downloaded first and kept in IndexedDB (a database of its own, `pushpilot-in-app`), with the assets inlined as `data:` URIs. A message shows only once all of it is cached, so it needs no network. A browser reporting under 3 GB of memory (`navigator.deviceMemory`) gets the message's light version where there is one.
+- **Cap and dates:** a message is not shown past its per-browser cap (the larger of this browser's own count and the server's) or outside its start and end dates by the browser's clock.
+- **Display:** a full-viewport transparent `iframe` above everything else (`z-index` 2147483647), loaded with `srcdoc` and `sandbox="allow-scripts"`. The page runs in an opaque origin, so it cannot read your site's cookies, storage or DOM, navigate your page, open pop-ups or submit forms. A content security policy limits its network requests to the origins on the app's allow-list in the dashboard, and blocks all others.
+- **Links:** the page calls `pushpilot.open(url)`. `javascript:`, `data:`, `file:`, `blob:` and `vbscript:` URLs are refused and the message stays open. Any other URL closes the message and opens in the current tab with `location.assign`. Relative URLs resolve against your page. There is no hook for your own link handler yet, so in a single-page app this is a full page load.
+- **Bridge:** `pushpilot.close()`, `open(url)`, `haptic(kind)` (`navigator.vibrate` where the browser has it, nothing elsewhere), `track(buttonId)`, `insets` (from `env(safe-area-inset-*)`, 0 without), `target`, `island` (always `null` on the web), `platform` (`"web"`), `light`, and `posture` with `onPosture(fn)`. On the web, `posture` is always `{state: "flat", screen: {width, height}}` with the viewport size, and it is updated when the window resizes.
+- **Events:** `shown` when the page has loaded, `clicked` for each `track` call (button ids of 1 to 64 bytes; others are ignored), and `dismissed` when a showing closes without any `track`. They are queued in IndexedDB and sent to `POST /api/sdk/v1/in-app/events/` in batches of 100, with the same retries as push events.
+- `forget()` also clears the in-app cache, counts and queued events.
+
+PushPilot's content host must allow cross-origin `GET` from your site, because the pages and assets are downloaded with `fetch`. On a self-hosted server, set CORS on the bucket or domain serving in-app files.
+
 ## Browser support
 
 This has been tested only against fakes so far, not in real browsers (see "Before going live" below).
@@ -132,7 +170,7 @@ This has been tested only against fakes so far, not in real browsers (see "Befor
 
 On iOS and iPadOS, Safari and the other browsers do not deliver web push to a site open in a tab. The visitor must add the site to their Home Screen and open it from there. The site needs a web app manifest with `"display": "standalone"` (or `"fullscreen"`), and `subscribe()` must run from a tap. Until then, `isSupported()` is false, so you can show your own "Add to Home Screen" hint instead of the button.
 
-Not covered: Safari's older proprietary push (macOS before Ventura) and in-app messages.
+Not covered: Safari's older proprietary push (macOS before Ventura).
 
 ## Moving from OneSignal
 
@@ -170,7 +208,7 @@ npm run example
 
 `npm run typecheck` checks the page code against the DOM types and the worker against the WebWorker types. `npm run example` builds, then serves `example/` on `http://localhost:8080` (set `PORT` to change it). There you enter the SDK key and base URL of a web app whose origin is `http://localhost:8080`, and try every call.
 
-The tests run in Node with fakes for `fetch`, `PushManager`, `Notification`, the worker's registration and clients, and IndexedDB (`fake-indexeddb`). None needs the network.
+The tests run in Node with fakes for `fetch`, `PushManager`, `Notification`, the worker's registration and clients, and IndexedDB (`fake-indexeddb`). The in-app tests that need a DOM run in `jsdom`. None needs the network.
 
 ### Before going live
 
@@ -179,6 +217,7 @@ These need a real browser and the backend half of the contract deployed (`web-co
 - On a site that has a OneSignal subscription with permission granted: load the page and confirm there is no prompt, the device registers, and a push arrives.
 - With the site's own worker importing ours: confirm both its pushes and ours are handled.
 - Revoke permission in the browser settings, come back to the page, and confirm the device shows `denied` with no address.
+- In-app messages, with `npm run example`: publish an "app open" message and one with a trigger name. Reload, check that the first shows once, that the "showInApp" button shows the second, that its buttons, links and close work, and that the report counts shown, clicked and dismissed. Check a message's transparent areas in a dark-mode browser. Check a coach mark pointing at the "compose" button, and a phone with a notch in landscape for the insets.
 
 ## Releasing
 
