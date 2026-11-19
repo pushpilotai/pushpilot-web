@@ -140,3 +140,8 @@ test("the bridge carries the values and cannot be closed early by them", () => {
   const hostile = bridgeScript({ ...VALUES, posture: { state: "</script><script>bad()" as "flat", screen: { width: 1, height: 1 } } });
   expect(hostile.match(/<\/script>/g)).toHaveLength(1);
 });
+
+test("declares light and dark in the page so Chrome keeps the frame transparent", () => {
+  const page = framePage("<html><head></head><body></body></html>", [], VALUES);
+  expect(page).toContain('<meta name="color-scheme" content="light dark"></head>');
+});

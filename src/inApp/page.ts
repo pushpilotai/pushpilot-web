@@ -75,7 +75,14 @@ export function insertAfterHead(html: string, markup: string): string {
   return html.slice(0, at) + markup + html.slice(at);
 }
 
+/**
+ * Chrome paints an iframe opaque when the frame element's color scheme and the page's differ,
+ * so the page and the iframe element (frame.ts) both declare "light dark" to stay transparent
+ * over light and dark host pages alike (checked in headless Chromium).
+ */
+export const COLOR_SCHEME_META = '<meta name="color-scheme" content="light dark">';
+
 /** The full page the iframe loads: policy and bridge first, then the cached page. */
 export function framePage(cachedHtml: string, allowedOrigins: string[], values: BridgeValues): string {
-  return insertAfterHead(cachedHtml, cspMeta(allowedOrigins) + bridgeScript(values));
+  return insertAfterHead(cachedHtml, cspMeta(allowedOrigins) + bridgeScript(values) + COLOR_SCHEME_META);
 }

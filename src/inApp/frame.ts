@@ -108,7 +108,7 @@ export function showFrame(html: string, callbacks: FrameCallbacks): HTMLIFrameEl
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.setAttribute("title", "Message");
   frame.style.cssText =
-    "position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;background:transparent;color-scheme:normal;z-index:2147483647";
+    "position:fixed;top:0;left:0;width:100%;height:100%;border:0;margin:0;padding:0;background:transparent;color-scheme:light dark;z-index:2147483647";
   frame.srcdoc = html;
   let tracked = false;
   let closed = false;
