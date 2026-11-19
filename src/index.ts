@@ -1,6 +1,7 @@
 // PushPilot web SDK, page side. Every setter returns at once and never throws; storage and network
 // work run one call at a time, in order. Calls made before init are queued and run after it.
 import { ensureSubscription, flush, forget as resetInstallation, log, permission, stale } from "./engine";
+import * as inApp from "./inApp";
 import { readState, writeState, type AttributeValue, type State } from "./store";
 
 export type { AttributeValue };
@@ -49,12 +50,35 @@ export function init(sdkKey: string, options: InitOptions = {}): void {
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
   run(() => start(key, baseUrl), undefined);
   for (const call of queued.splice(0)) run(call, undefined);
+  // In-app work starts once the installation id exists, without holding up later calls.
+  submit(async () => inApp.foreground());
   if (typeof document !== "undefined") {
     // The page coming back into view is the web's "app foreground": permission may have changed.
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") submit(foreground);
+      if (document.visibilityState === "visible") {
+        submit(foreground);
+        submit(async () => inApp.foreground());
+      } else inApp.background();
     });
   }
+}
+
+/**
+ * Shows the first eligible cached in-app message whose trigger name is `name`, with no network
+ * round trip. Resolves true when one went on screen; false otherwise, including before init.
+ */
+export function showInApp(name: string): Promise<boolean> {
+  if (!started) {
+    log("call init before showInApp");
+    return Promise.resolve(false);
+  }
+  if (typeof name !== "string" || !name) return Promise.resolve(false);
+  return inApp.show({ name });
+}
+
+/** Names the page element a coach-mark message points at, by CSS selector, e.g. markView("#compose", "compose"). */
+export function markView(selector: string, name: string): void {
+  inApp.markView(selector, name);
 }
 
 /** Links this browser to the site's own user id after login; null clears it. */
@@ -97,6 +121,7 @@ export function logout(): void {
 export function forget(): void {
   submit(async () => {
     await resetInstallation();
+    await inApp.reset();
     kick(0);
   });
 }

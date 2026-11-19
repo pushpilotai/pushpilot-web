@@ -63,7 +63,7 @@ function db(): Promise<IDBDatabase> {
 }
 
 /** Resolves with a request's result. */
-function result<T>(request: IDBRequest<T>): Promise<T> {
+export function result<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -71,7 +71,7 @@ function result<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 /** Resolves once a write transaction is committed. */
-function committed(tx: IDBTransaction): Promise<void> {
+export function committed(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = tx.onabort = () => reject(tx.error);

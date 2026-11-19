@@ -21,11 +21,11 @@ export function log(message: string): void {
 }
 
 /** Calls the SDK API with the app's public key; any failure to get an answer becomes code -1. */
-async function request(state: State, method: "GET" | "POST", path: string, body?: string): Promise<Answer> {
+export async function request(state: State, method: "GET" | "POST", path: string, body?: string, query = ""): Promise<Answer> {
   const headers: Record<string, string> = { "X-SDK-Key": state.sdk_key ?? "" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   try {
-    const response = await fetch(`${state.base_url}/api/sdk/v1/${path}/`, { method, headers, body });
+    const response = await fetch(`${state.base_url}/api/sdk/v1/${path}/${query}`, { method, headers, body });
     // Readable cross-origin only if the server exposes it; otherwise 0 and the backoff alone applies.
     const retryAfter = Number(response.headers.get("Retry-After"));
     return { code: response.status, body: await response.text(), retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : 0 };
@@ -36,7 +36,7 @@ async function request(state: State, method: "GET" | "POST", path: string, body?
 }
 
 /** POSTs and returns the answer once settled (2xx, or a 4xx retrying cannot fix); null when a retry is due. */
-async function post(state: State, path: string, json: string): Promise<Answer | null> {
+export async function post(state: State, path: string, json: string): Promise<Answer | null> {
   const answer = await request(state, "POST", path, json);
   const code = answer.code;
   if (code === 429 || code >= 500 || code < 0) {
