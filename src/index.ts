@@ -1,6 +1,6 @@
 // PushPilot web SDK, page side. Every setter returns at once and never throws; storage and network
 // work run one call at a time, in order. Calls made before init are queued and run after it.
-import { ensureSubscription, flush, forget as resetInstallation, log, permission, stale } from "./engine";
+import { ensureSubscription, flush, forget as resetInstallation, log, permission, stale, trackAppEvent } from "./engine";
 import * as inApp from "./inApp";
 import { readState, writeState, type AttributeValue, type State } from "./store";
 
@@ -99,6 +99,20 @@ export function setAttributes(attributes: Record<string, AttributeValue>): void 
       else log(`attribute ${name} must be a string, finite number or boolean; ignored`);
     }
     await writeState({ attributes: current });
+    kick();
+  });
+}
+
+/**
+ * Records a custom event such as `order_placed`. Names are snake_case, at most 40 characters;
+ * property values are strings, finite numbers or booleans (others, null included, are dropped).
+ * Events are kept in the browser and sent in batches once it is registered.
+ */
+export function track(name: string, properties: Record<string, string | number | boolean | null> = {}): void {
+  const occurredAt = new Date().toISOString();
+  const copy = { ...properties };
+  submit(async () => {
+    await trackAppEvent(name, copy, occurredAt);
     kick();
   });
 }

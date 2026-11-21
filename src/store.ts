@@ -38,29 +38,53 @@ export interface TrackedEvent {
   button_id?: string;
 }
 
+/** One queued custom event from track(), as the track endpoint takes it. */
+export interface AppEvent {
+  name: string;
+  properties: Record<string, string | number | boolean>;
+  occurred_at: string;
+  idempotency_key: string;
+}
+
+/** A persisted event queue: the opener of the database that holds it and its object store. */
+export interface Queue {
+  open: () => Promise<IDBDatabase>;
+  store: string;
+}
+
 const DB_NAME = "pushpilot";
 const STATE = "state";
 const EVENTS = "events";
 
-let opening: Promise<IDBDatabase> | undefined;
-
-/** Opens the database once per context, creating its two stores on first use. */
-function db(): Promise<IDBDatabase> {
-  opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(STATE);
-      // Events get increasing keys, so the oldest come first and appends never overwrite.
-      request.result.createObjectStore(EVENTS, { autoIncrement: true });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  }).catch((error) => {
-    opening = undefined; // let the next call try again
-    throw error;
-  });
-  return opening;
+/** Returns a function that opens database `name` once per context, letting `upgrade` create its stores on first use. */
+function opener(name: string, upgrade: (db: IDBDatabase) => void): () => Promise<IDBDatabase> {
+  let opening: Promise<IDBDatabase> | undefined;
+  return () =>
+    (opening ??= new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name, 1);
+      request.onupgradeneeded = () => upgrade(request.result);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    }).catch((error) => {
+      opening = undefined; // let the next call try again
+      throw error;
+    }));
 }
+
+const db = opener(DB_NAME, (created) => {
+  created.createObjectStore(STATE);
+  // Events get increasing keys, so the oldest come first and appends never overwrite.
+  created.createObjectStore(EVENTS, { autoIncrement: true });
+});
+
+// Custom events get a database of their own rather than a new version of "pushpilot": an older
+// pushpilot-sw.js still hosted on the site opens "pushpilot" at version 1 and would then fail.
+const appEventsDb = opener("pushpilot-track", (created) => created.createObjectStore(EVENTS, { autoIncrement: true }));
+
+/** Delivery and click events, sent to /events/. */
+export const DELIVERY_QUEUE: Queue = { open: db, store: EVENTS };
+/** Custom events from track(), sent to /track/. */
+export const APP_EVENT_QUEUE: Queue = { open: appEventsDb, store: EVENTS };
 
 /** Resolves with a request's result. */
 export function result<T>(request: IDBRequest<T>): Promise<T> {
@@ -98,10 +122,10 @@ export async function writeState(patch: Partial<State>): Promise<void> {
   await committed(tx);
 }
 
-/** Appends an event, dropping the oldest beyond `max`; returns how many were dropped. */
-export async function addEvent(event: TrackedEvent, max: number): Promise<number> {
-  const tx = (await db()).transaction(EVENTS, "readwrite");
-  const store = tx.objectStore(EVENTS);
+/** Appends an event to `queue`, dropping the oldest beyond `max`; returns how many were dropped. */
+export async function addEvent(event: TrackedEvent | AppEvent, max: number, queue = DELIVERY_QUEUE): Promise<number> {
+  const tx = (await queue.open()).transaction(queue.store, "readwrite");
+  const store = tx.objectStore(queue.store);
   store.add(event);
   const extra = (await result(store.count())) - max;
   if (extra > 0) {
@@ -112,24 +136,24 @@ export async function addEvent(event: TrackedEvent, max: number): Promise<number
   return Math.max(0, extra);
 }
 
-/** Reads the oldest `count` events with their keys. */
-export async function peekEvents(count: number): Promise<{ keys: IDBValidKey[]; events: TrackedEvent[] }> {
-  const store = (await db()).transaction(EVENTS).objectStore(EVENTS);
+/** Reads the oldest `count` events of `queue` with their keys. */
+export async function peekEvents<T = TrackedEvent>(count: number, queue = DELIVERY_QUEUE): Promise<{ keys: IDBValidKey[]; events: T[] }> {
+  const store = (await queue.open()).transaction(queue.store).objectStore(queue.store);
   const [keys, events] = await Promise.all([result(store.getAllKeys(null, count)), result(store.getAll(null, count))]);
   return { keys, events };
 }
 
 /** Deletes the events from the first to the last of `keys` (a batch read by peekEvents). */
-export async function deleteEvents(keys: IDBValidKey[]): Promise<void> {
+export async function deleteEvents(keys: IDBValidKey[], queue = DELIVERY_QUEUE): Promise<void> {
   if (keys.length === 0) return;
-  const tx = (await db()).transaction(EVENTS, "readwrite");
-  tx.objectStore(EVENTS).delete(IDBKeyRange.bound(keys[0], keys[keys.length - 1]));
+  const tx = (await queue.open()).transaction(queue.store, "readwrite");
+  tx.objectStore(queue.store).delete(IDBKeyRange.bound(keys[0], keys[keys.length - 1]));
   await committed(tx);
 }
 
-/** Removes every queued event. */
-export async function clearEvents(): Promise<void> {
-  const tx = (await db()).transaction(EVENTS, "readwrite");
-  tx.objectStore(EVENTS).clear();
+/** Removes every event queued in `queue`. */
+export async function clearEvents(queue = DELIVERY_QUEUE): Promise<void> {
+  const tx = (await queue.open()).transaction(queue.store, "readwrite");
+  tx.objectStore(queue.store).clear();
   await committed(tx);
 }

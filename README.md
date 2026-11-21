@@ -68,7 +68,8 @@ Setters return at once and never throw. They run one at a time, in order. Calls 
 | `logout()` | Clears the external user id. The browser keeps receiving pushes. |
 | `setTopics(string[])` | Replaces the topic list. Names outside `A-Z a-z 0-9 . _ ~ % -` or longer than 255 characters are dropped, the rest are de-duplicated and sorted, and at most 100 are kept. |
 | `setAttributes({ name: value })` | Merges attributes declared in the dashboard. A value is a string, a finite number or a boolean. `null` removes the attribute. |
-| `forget()` | Deletes this installation from PushPilot and clears local state. The next page load registers a new installation. |
+| `track(name, properties?)` | Records a custom event such as `order_placed`, for example `track("order_placed", { value: 499, currency: "INR" })`. Names are snake_case: a lowercase letter, then lowercase letters, digits or `_`, at most 40 characters; other names are ignored. A property value is a string, a finite number or a boolean; others, `null` included, are dropped. A numeric `value` is summed in rollups. New names are registered on first use and appear in the dashboard. Events are kept in the browser and sent in batches once it is registered. |
+| `forget()` | Deletes this installation from PushPilot and clears local state, including queued events. The next page load registers a new installation. |
 | `showInApp(name): Promise<boolean>` | Shows the first eligible cached in-app message whose trigger name is `name`, with no network request. Resolves `true` when one went on screen. `false` before `init`, when none is eligible, or while another message is showing. |
 | `markView(selector, name)` | Names the element a coach-mark message points at, by CSS selector, for example `markView("#compose", "compose")`. |
 | `isSupported(): boolean` | True when this browser can receive web push on this page. Use it to hide your button. On iOS it is false until the site is opened from the Home Screen. |
@@ -96,6 +97,21 @@ Register and sync use the mobile body with `token_kind: "webpush"`, and a `web_p
 }
 ```
 
+Custom events from `track` go to `POST /api/sdk/v1/track/`, at most 100 per request:
+
+```json
+{
+  "installation_id": "…uuid…",
+  "events": [
+    {"name": "order_placed", "properties": {"value": 499, "currency": "INR"}, "occurred_at": "2026-11-21T10:00:00.000Z", "idempotency_key": "…uuid…"}
+  ]
+}
+```
+
+`occurred_at` is when `track` was called, RFC 3339 in UTC. `idempotency_key` is a random UUID per event, so a retried batch is never counted twice. Warnings in the reply (`{"accepted": n, "warnings": [...]}`) are logged.
+
+**Privacy:** the SDK sends nothing beyond the bodies above, delivery and click events, and the custom events and properties your site passes to `track`. It collects no advertising id, location, email or phone. Do not pass personal data in event properties unless your privacy policy covers it. `forget()` deletes the installation on the server and clears every queued event.
+
 `topics` and `attributes` are sent only once you have set them. `notification_permission` is `granted`, `denied`, or `unknown` when the visitor was never asked (the browser's `default`, reported like iOS's "not determined"). `device_model` is the browser name and major version, because web has no device model. `os_version` and `app_version` are not sent.
 
 ## How it behaves, and where it differs from Android
@@ -103,6 +119,7 @@ Register and sync use the mobile body with `token_kind: "webpush"`, and a `web_p
 Shared with Android:
 - Changes made within 2 seconds of each other go out in one sync. A sync is sent only when the body differs from the last one the server accepted, plus once a day.
 - Events (`delivered`, `clicked` with `button_id`) are queued, oldest first, up to 1,000. They go out in batches of 100 after a successful sync. A 2xx removes the batch. Another 4xx drops it. A 429, a 5xx or a network error keeps it and waits for the longer of `Retry-After` and a backoff of 1 s doubling to 5 minutes, randomised to between half and all of each step. A pending `forget` is sent before anything else.
+- Custom events from `track` have their own queue with the same cap, batch size and retries. They go out after the delivery and click events, each batch with the same idempotency keys until it is settled.
 
 Different on the web, and why:
 - **State is in IndexedDB**, shared by the page and the service worker. The worker needs the SDK key, the base URL and the installation id when no page is open. Flushes from the page and the worker take turns through the Web Locks API where the browser has it. Where it does not, a batch can occasionally be sent twice, and the server ignores the repeat.
@@ -111,6 +128,7 @@ Different on the web, and why:
 - **With permission already granted, `init` subscribes without a prompt.** This includes a subscription made with another server key, for example a site moving from OneSignal, which is replaced. It also picks up a renewed endpoint and clears the address when permission was withdrawn. The check runs on every page load and whenever the page becomes visible again, which is the web's version of "app foreground".
 - **`unsubscribe()` is remembered**, so the automatic re-subscribe above does not undo it.
 - **The worker does not wait to retry.** A browser stops a service worker soon after each event, so the worker tries once. Anything left over goes out on the next push, the next click or the next page view.
+- **Custom events wait for registration.** The server stores nothing for a browser it has not registered, so events tracked before the visitor subscribes stay queued (up to 1,000) and go out after the first registration. A visitor who never subscribes sends none.
 - **`Retry-After` is read only if the server exposes it** to cross-origin scripts (`Access-Control-Expose-Headers: Retry-After`). Otherwise the backoff alone applies.
 
 ## The notification

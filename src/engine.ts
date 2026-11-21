@@ -1,12 +1,27 @@
 // The sync and events engine, shared by the page and the service worker. Mirrors Android's Engine:
 // the whole desired state lives in storage, a sync is due whenever the body built from it differs
 // from the last one the server accepted, and events go out in batches with the same backoff.
-import { addEvent, clearEvents, deleteEvents, peekEvents, readState, writeState, type State, type TrackedEvent } from "./store";
+import {
+  addEvent,
+  APP_EVENT_QUEUE,
+  clearEvents,
+  deleteEvents,
+  DELIVERY_QUEUE,
+  peekEvents,
+  readState,
+  writeState,
+  type AppEvent,
+  type Queue,
+  type State,
+  type TrackedEvent,
+} from "./store";
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const MAX_BACKOFF_MS = 5 * 60 * 1000;
 export const MAX_EVENTS = 1000;
 export const EVENT_BATCH = 100;
+/** Custom event names, matching the server's check. */
+const EVENT_NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
 /** One HTTP answer; code -1 means none arrived (offline, CORS failure, DNS). */
 interface Answer {
@@ -138,13 +153,35 @@ async function sync(state: State): Promise<boolean> {
   return true;
 }
 
-/** Sends queued events oldest first, up to 100 per request; a rejected batch is dropped, a failed one kept. */
+/** Sends delivery and click events, then custom events once this browser is registered on the server. */
 async function sendEvents(state: State): Promise<boolean> {
+  if (!(await drain(state, DELIVERY_QUEUE, "events", (events) => ({ events })))) return false;
+  // Read again: the sync may have just registered this browser or been given another id. The
+  // server stores nothing for an unregistered installation, so custom events wait until then.
+  const { installation_id, last_synced_at } = await readState();
+  if (last_synced_at === undefined) return true;
+  return drain(state, APP_EVENT_QUEUE, "track", (events) => ({ installation_id, events }));
+}
+
+/** Sends one queue oldest first, up to 100 per request; a rejected batch is dropped, a failed one kept (false). */
+async function drain(state: State, queue: Queue, path: string, body: (events: unknown[]) => object): Promise<boolean> {
   for (;;) {
-    const { keys, events } = await peekEvents(EVENT_BATCH);
+    const { keys, events } = await peekEvents<unknown>(EVENT_BATCH, queue);
     if (events.length === 0) return true;
-    if (!(await post(state, "events", JSON.stringify({ events })))) return false;
-    await deleteEvents(keys);
+    const answer = await post(state, path, JSON.stringify(body(events)));
+    if (!answer) return false;
+    if (answer.code >= 200 && answer.code <= 299) logWarnings(path, answer.body);
+    await deleteEvents(keys, queue);
+  }
+}
+
+/** Logs the `warnings` list of a JSON reply when it has any. */
+function logWarnings(path: string, text: string): void {
+  try {
+    const warnings = (JSON.parse(text) as { warnings?: unknown } | null)?.warnings;
+    if (Array.isArray(warnings) && warnings.length) log(`${path} warnings: ${JSON.stringify(warnings)}`);
+  } catch {
+    // An unreadable 2xx body still means the batch was accepted.
   }
 }
 
@@ -179,6 +216,22 @@ export async function track(notificationId: string, type: TrackedEvent["type"], 
   if ((await addEvent(event, MAX_EVENTS)) > 0) log("event queue full; dropped the oldest");
 }
 
+/**
+ * Queues a custom event that happened at `occurredAt`, with a random idempotency key so a retried
+ * batch is never counted twice. A name the server would reject is ignored; property values other
+ * than strings, finite numbers and booleans are dropped.
+ */
+export async function trackAppEvent(name: string, properties: Record<string, unknown>, occurredAt: string): Promise<void> {
+  if (typeof name !== "string" || !EVENT_NAME.test(name)) return log(`event name ${name} must be snake_case, at most 40 characters; ignored`);
+  const kept: AppEvent["properties"] = {};
+  for (const [key, value] of Object.entries(properties ?? {})) {
+    if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) kept[key] = value;
+    else log(`property ${key} of ${name} must be a string, finite number or boolean; dropped`);
+  }
+  const event: AppEvent = { name, properties: kept, occurred_at: occurredAt, idempotency_key: crypto.randomUUID() };
+  if ((await addEvent(event, MAX_EVENTS, APP_EVENT_QUEUE)) > 0) log("custom event queue full; dropped the oldest");
+}
+
 /** Deletes this installation on the server (at the next flush) and resets to a fresh one. */
 export async function forget(): Promise<void> {
   const state = await readState();
@@ -197,6 +250,7 @@ export async function forget(): Promise<void> {
     last_sent_payload: JSON.stringify(payload(fresh)),
   });
   await clearEvents();
+  await clearEvents(APP_EVENT_QUEUE);
 }
 
 /** Fetches the app's VAPID public key, cached for a day. Throws when the server cannot give one. */
