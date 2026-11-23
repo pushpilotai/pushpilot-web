@@ -1,6 +1,6 @@
 {
   "name": "@pushpilotai/web",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "PushPilot web SDK: subscribe a browser, show pushes from a service worker, show in-app messages, and track deliveries and clicks.",
   "license": "Apache-2.0",
   "author": "PushPilot <sdk@pushpilot.ai> (https://pushpilot.ai)",

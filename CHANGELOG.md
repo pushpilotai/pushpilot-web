@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-11-23)
 
-- `track(name, properties?)` records custom events such as `order_placed`. They are queued in IndexedDB (up to 1,000) and sent to `POST /api/sdk/v1/track/` in batches of 100 after delivery and click events, once the browser is registered, each with `occurred_at` and a random `idempotency_key`, with the same retries as push events. `forget()` clears them.
+Custom events.
+
+- `track(name, properties?)` records custom events such as `order_placed`. They are queued in IndexedDB (up to 1,000) and sent to `POST /api/sdk/v1/track/` in batches of 100 after delivery and click events, once the browser is registered (custom events can start journeys), each with `occurred_at` and a random `idempotency_key`, with the same retries as push events. `forget()` clears them.
 
 ## 1.1.0 (2026-11-20)
 

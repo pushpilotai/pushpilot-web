@@ -88,7 +88,7 @@ Register and sync use the mobile body with `token_kind: "webpush"`, and a `web_p
   "web_push": {"endpoint": "https://fcm.googleapis.com/fcm/send/…", "p256dh": "…", "auth": "…"},
   "external_user_id": null,
   "notification_permission": "granted",
-  "sdk_version": "1.1.0",
+  "sdk_version": "1.2.0",
   "device_model": "Chrome 131",
   "locale": "en-GB",
   "timezone": "Europe/London",
